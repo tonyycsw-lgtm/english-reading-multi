@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>多单元英语学习 · 香港火灾 / 盲盒</title>
+  <!-- Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- 主样式表 -->
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div id="app" data-unit-id="">
+    <!-- 全局单元控制栏 -->
+    <div class="unit-control-bar">
+      <div class="unit-selector-wrapper">
+        <label for="unit-select"><i class="fas fa-book-open"></i> 选择单元：</label>
+        <select id="unit-select" class="unit-select" onchange="UnitManager.handleUnitSelect(this.value)">
+          <option value="">加载中…</option>
+        </select>
+      </div>
+      <div class="upload-wrapper">
+        <label for="unit-upload" class="btn btn-outline upload-btn">
+          <i class="fas fa-upload"></i> 上传JSON单元
+        </label>
+        <input type="file" id="unit-upload" accept="application/json" style="display:none;" onchange="UnitManager.handleFileUpload(this)">
+      </div>
+    </div>
+
+    <!-- 动态内容容器：所有交互区域将在JS渲染时填充 -->
+    <div class="a4-container">
+      <!-- 文章 + 词汇区 -->
+      <div class="article-vocab-wrapper" id="article-vocab-wrapper"></div>
+
+      <!-- Vocabulary Usage -->
+      <h2 class="section-title vocab-usage-title">
+        <span class="title-icon"><i class="fas fa-font"></i></span> Vocabulary Usage (Drag & Drop)
+      </h2>
+      <div class="interactive-section" id="vocab-usage-section"></div>
+      <div class="section-divider"></div>
+
+      <!-- Reading Comprehension -->
+      <h2 class="section-title reading-title">
+        <span class="title-icon"><i class="fas fa-book-reader"></i></span> Reading Comprehension
+      </h2>
+      <div class="interactive-section" id="reading-section"></div>
+      <div class="section-divider"></div>
+
+      <!-- Cloze Test -->
+      <h2 class="section-title cloze-title">
+        <span class="title-icon"><i class="fas fa-edit"></i></span> Cloze Test (150 Words)
+      </h2>
+      <div class="interactive-section" id="cloze-section"></div>
+      <div class="section-divider"></div>
+
+      <!-- Sentence Completion (7 choose 5) -->
+      <h2 class="section-title seven-five-title">
+        <span class="title-icon"><i class="fas fa-tasks"></i></span> Sentence Completion
+      </h2>
+      <div class="interactive-section" id="seven-five-section"></div>
+      <div class="section-divider"></div>
+
+      <!-- Grammar Fill in the Blanks -->
+      <h2 class="section-title grammar-title">
+        <span class="title-icon"><i class="fas fa-language"></i></span> Grammar Fill in the Blanks
+      </h2>
+      <div class="interactive-section" id="grammar-section"></div>
+    </div>
+  </div>
+
+  <!-- 音频容器（隐藏） -->
+  <div id="audio-container" class="audio-element"></div>
+
+  <!-- 主脚本文件 -->
+  <script src="./js/main.js"></script>
+</body>
+</html>
