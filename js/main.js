@@ -273,7 +273,10 @@ const Renderer = {
   renderReading(unitData, unitId) {
     const container = document.getElementById('reading-section');
     const rc = unitData.readingComprehension;
-    if (!rc) { container.innerHTML = ''; return; }
+    if (!rc || !rc.length) { 
+      container.innerHTML = '<div style="padding:20px; text-align:center; color:#666;">暂无阅读理解题目</div>'; 
+      return; 
+    }
     let html = `<div style="display:flex; flex-direction:column; gap:12px;">`;
     rc.forEach((item, idx) => {
       const qNum = idx + 1;
@@ -406,7 +409,7 @@ const AudioController = {
     for (let i = 1; i <= paraCount; i++) {
       const audio = new Audio();
       audio.preload = 'metadata';
-      audio.src = base.paragraphPattern ? base.paragraphPattern.replace('{id}', i.toString().padStart(2,'0')) : `./audio/${unitId}/paragraph_${i.toString().padStart(2,'0')}.mp3`;
+      audio.src = base.paragraphPattern ? base.paragraphPattern.replace('{id}', i.toString().padStart(2,'0')) : `/english-reading-multi/audio/${unitId}/paragraph_${i.toString().padStart(2,'0')}.mp3`;
       audio.load();
     }
   },
@@ -424,7 +427,7 @@ const AudioController = {
     try {
       const audio = new Audio();
       const unitData = UnitManager.getCurrentUnitData();
-      const pattern = unitData.audio?.paragraphPattern || `./audio/${unitId}/paragraph_{id}.mp3`;
+      const pattern = unitData.audio?.paragraphPattern || `/english-reading-multi/audio/${unitId}/paragraph_{id}.mp3`;
       audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
       await audio.play();
       this.stop(); // 停止之前的
@@ -454,7 +457,7 @@ const AudioController = {
     try {
       const audio = new Audio();
       const unitData = UnitManager.getCurrentUnitData();
-      const pattern = unitData.audio?.implicationPattern || `./audio/${unitId}/impl_{id}.mp3`;
+      const pattern = unitData.audio?.implicationPattern || `/english-reading-multi/audio/${unitId}/impl_{id}.mp3`;
       audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
       await audio.play();
       this.stop();
@@ -479,7 +482,7 @@ const AudioController = {
     try {
       const audio = new Audio();
       const unitData = UnitManager.getCurrentUnitData();
-      const pattern = unitData.audio?.vocabularyPattern || `./audio/${unitId}/word_{id}.mp3`;
+      const pattern = unitData.audio?.vocabularyPattern || `/english-reading-multi/audio/${unitId}/word_{id}.mp3`;
       audio.src = pattern.replace('{id}', vocabId.toString().padStart(2,'0'));
       await audio.play();
       this.stop();
@@ -536,12 +539,12 @@ const DragDrop = {
   allowDrop(ev) { ev.preventDefault(); },
 
   drag(ev, unitId) {
-    ev.dataTransfer.setData('text', ev.target.id);
+    ev.dataTransfer.setData('text/plain', ev.target.id);
   },
 
   drop(ev, unitId) {
     ev.preventDefault();
-    const data = ev.dataTransfer.getData('text');
+    const data = ev.dataTransfer.getData('text/plain');
     const dragged = document.getElementById(data);
     if (!dragged || dragged.classList.contains('used')) return;
     if (!ev.target.classList.contains('seven-five-dropzone')) return;
@@ -578,12 +581,12 @@ const DragDrop = {
   },
 
   dragVocab(ev, unitId) {
-    ev.dataTransfer.setData('text', ev.target.id);
+    ev.dataTransfer.setData('text/plain', ev.target.id);
   },
 
   dropVocab(ev, unitId) {
     ev.preventDefault();
-    const data = ev.dataTransfer.getData('text');
+    const data = ev.dataTransfer.getData('text/plain');
     const dragged = document.getElementById(data);
     if (!dragged || dragged.classList.contains('used')) return;
     if (!ev.target.classList.contains('vocab-dropzone')) return;
@@ -644,7 +647,7 @@ const ExerciseChecker = {
         dz.classList.add('correct'); correct++;
       } else {
         dz.classList.add('incorrect');
-        dz.innerHTML = `${user} <span style="color:#b91c1c;">(正确: ${answers[i-1]})</span>`;
+        dz.innerHTML = `${user} <span style="color:#b91c1c; font-size:10px;">(正确: ${answers[i-1]})</span>`;
       }
     }
     this.showResult(unitId, 'vocab', correct, answers.length);
@@ -654,11 +657,15 @@ const ExerciseChecker = {
     for (let i = 1; i <= 10; i++) {
       const dz = document.getElementById(`${unitId}_vocab-drop-${i}`);
       if (dz) {
-        dz.innerHTML = ''; dz.classList.remove('filled','correct','incorrect'); dz.removeAttribute('data-answer');
+        dz.innerHTML = ''; 
+        dz.classList.remove('filled','correct','incorrect'); 
+        dz.removeAttribute('data-answer');
+        dz.style.color = '';
       }
     }
     document.querySelectorAll(`#${unitId}_vocab-drag-source .vocab-drag-item`).forEach(el => {
-      el.classList.remove('used'); el.draggable = true;
+      el.classList.remove('used'); 
+      el.draggable = true;
     });
     DragDrop.vocabDragHistory.delete(unitId);
     const result = document.getElementById(`${unitId}_vocab-result`);
@@ -747,12 +754,16 @@ const ExerciseChecker = {
     for (let i = 1; i <= 7; i++) {
       const dz = document.getElementById(`${unitId}_drop-${i}`);
       if (dz) {
-        dz.innerHTML = ''; dz.classList.remove('filled','correct','incorrect','empty'); dz.removeAttribute('data-answer');
-        dz.style.minWidth = '80px'; dz.style.width = '80px';
+        dz.innerHTML = ''; 
+        dz.classList.remove('filled','correct','incorrect','empty'); 
+        dz.removeAttribute('data-answer');
+        dz.style.minWidth = '80px'; 
+        dz.style.width = '80px';
       }
     }
     document.querySelectorAll(`#${unitId}_drag-source .drag-item`).forEach(el => {
-      el.classList.remove('used'); el.draggable = true;
+      el.classList.remove('used'); 
+      el.draggable = true;
     });
     DragDrop.dragHistory.delete(unitId);
     const res = document.getElementById(`${unitId}_sevenfive-result`);
@@ -812,6 +823,36 @@ const ExerciseChecker = {
     res.style.display = 'block';
   }
 };
+
+// ============================================
+// 全局拖拽事件监听器（修复拖拽放置问题）
+// ============================================
+document.addEventListener('dragover', (e) => {
+  e.preventDefault();
+});
+
+document.addEventListener('drop', (e) => {
+  // 词汇拖拽放置
+  const vocabDropzone = e.target.closest('.vocab-dropzone');
+  if (vocabDropzone) {
+    e.preventDefault();
+    const unitId = UnitManager.getCurrentUnitId();
+    if (unitId) {
+      DragDrop.dropVocab(e, unitId);
+    }
+    return;
+  }
+  
+  // 句子完成拖拽放置
+  const sevenFiveDropzone = e.target.closest('.seven-five-dropzone');
+  if (sevenFiveDropzone) {
+    e.preventDefault();
+    const unitId = UnitManager.getCurrentUnitId();
+    if (unitId) {
+      DragDrop.drop(e, unitId);
+    }
+  }
+});
 
 // ============================================
 // 页面启动
