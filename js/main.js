@@ -2,17 +2,15 @@
 // 全局命名空间 & 依赖管理
 // ============================================
 const UnitManager = (function() {
-  let unitsIndex = [];          // [{ unitId, unitName, dataUrl }]
-  let currentUnitData = null;   // 完整单元JSON
+  let unitsIndex = [];
+  let currentUnitData = null;
   let currentUnitId = '';
   const app = document.getElementById('app');
 
-  // 初始化：加载单元索引 + 处理URL参数
   async function init() {
     await loadUnitsIndex();
     populateUnitSelect();
 
-    // URL参数 ?unit=xxx
     const urlUnit = getUnitFromURL();
     if (urlUnit) {
       const found = unitsIndex.find(u => u.unitId === urlUnit);
@@ -21,13 +19,11 @@ const UnitManager = (function() {
         return;
       }
     }
-    // 默认加载第一个单元
     if (unitsIndex.length > 0) {
       await loadAndRenderUnit(unitsIndex[0]);
     }
   }
 
-  // 加载 units-index.json
   async function loadUnitsIndex() {
     try {
       const res = await fetch('./data/units-index.json');
@@ -42,7 +38,6 @@ const UnitManager = (function() {
     }
   }
 
-  // 填充下拉框
   function populateUnitSelect() {
     const select = document.getElementById('unit-select');
     select.innerHTML = '';
@@ -54,16 +49,13 @@ const UnitManager = (function() {
     });
   }
 
-  // 从URL获取unit参数
   function getUnitFromURL() {
     const params = new URLSearchParams(window.location.search);
     return params.get('unit');
   }
 
-  // 加载单元数据并渲染（修复缺陷6：切换前停止音频、清除历史）
   async function loadAndRenderUnit(unitInfo) {
     try {
-      // ---------- 缺陷6修复：停止所有音频，清除拖拽历史 ----------
       AudioController.stop();
       if (currentUnitId) {
         DragDrop.dragHistory.delete(currentUnitId);
@@ -159,7 +151,6 @@ const Renderer = {
     }, 50);
   },
 
-  // ---------- 文章 + 词汇 ----------
   renderArticleVocabulary(unitData, unitId) {
     const wrapper = document.getElementById('article-vocab-wrapper');
     const article = unitData.article;
@@ -227,8 +218,6 @@ const Renderer = {
     wrapper.innerHTML = html;
   },
 
-  // ---------- Vocabulary Usage (拖拽) ----------
-  // 缺陷1修复：移除所有内联拖拽监听器，完全依靠全局监听器
   renderVocabUsage(unitData, unitId) {
     const container = document.getElementById('vocab-usage-section');
     const vu = unitData.vocabUsage;
@@ -240,7 +229,6 @@ const Renderer = {
         <div class="vocab-drag-source" id="${unitId}_vocab-drag-source">
     `;
     vu.options.forEach(opt => {
-      // 缺陷1修复：移除 ondragstart，完全由全局监听器处理（已在document上监听dragstart）
       html += `<div class="vocab-drag-item" draggable="true" id="${unitId}_vocab-option-${opt}">
                   <i class="fas fa-grip-vertical" style="margin-right:8px; color:#9ca3af;"></i>${opt}
                 </div>`;
@@ -264,7 +252,6 @@ const Renderer = {
     container.innerHTML = html;
   },
 
-  // ---------- 阅读理解 ----------
   renderReading(unitData, unitId) {
     const container = document.getElementById('reading-section');
     const rc = unitData.readingComprehension;
@@ -278,7 +265,6 @@ const Renderer = {
       html += `<div><div style="font-weight:600;">${item.question}</div><div style="margin-left:20px;">`;
       item.options.forEach(opt => {
         const radioId = `${unitId}_reading-${qNum}-${opt.id}`;
-        // 缺陷4修复：为label添加class="option-label"
         html += `<div style="display:flex; align-items:center; gap:8px;">
                     <input type="radio" name="${unitId}_reading-${qNum}" id="${radioId}" value="${opt.id}">
                     <label for="${radioId}" class="option-label">${opt.text}</label>
@@ -295,7 +281,6 @@ const Renderer = {
     container.innerHTML = html;
   },
 
-  // ---------- 完形填空 ----------
   renderCloze(unitData, unitId) {
     const container = document.getElementById('cloze-section');
     let text = unitData.clozeText || '';
@@ -310,14 +295,12 @@ const Renderer = {
     `;
   },
 
-  // ---------- 句子完成 ----------
   renderSevenFive(unitData, unitId) {
     const container = document.getElementById('seven-five-section');
     const sf = unitData.sevenFive;
     if (!sf) { container.innerHTML = ''; return; }
     let optionsHtml = '';
     sf.options.forEach(opt => {
-      // 缺陷1修复：移除 ondragstart，由全局监听器处理
       optionsHtml += `<div class="drag-item" draggable="true" id="${unitId}_option-${opt.id}">
                         <i class="fas fa-grip-vertical" style="margin-right:8px;"></i>${opt.text}
                       </div>`;
@@ -339,7 +322,6 @@ const Renderer = {
     `;
   },
 
-  // ---------- 语法填空 ----------
   renderGrammar(unitData, unitId) {
     const container = document.getElementById('grammar-section');
     let text = unitData.grammarText || '';
@@ -390,11 +372,27 @@ const Renderer = {
 };
 
 // ============================================
-// 音频控制器（修复缺陷3：停止时按按钮类型恢复）
+// 音频控制器（完全修复：自然结束恢复、去除图标符号）
 // ============================================
 const AudioController = {
   currentAudio: null,
   currentPlayingButton: null,
+
+  // 辅助函数：根据按钮类型恢复原始外观
+  resetButton(btn) {
+    if (!btn) return;
+    btn.classList.remove('playing', 'loading');
+    if (btn.id.includes('_para-audio-btn-')) {
+      btn.innerHTML = '<i class="fas fa-volume-up"></i> 朗读';
+    } else if (btn.id.includes('_impl-audio-btn-')) {
+      btn.innerHTML = '<i class="fas fa-play"></i>';
+    } else if (btn.id.includes('_vocab-audio-btn-')) {
+      btn.innerHTML = '<i class="fas fa-volume-up"></i>';
+    } else {
+      // 降级通用恢复
+      btn.innerHTML = btn.innerHTML.includes('朗读') ? '<i class="fas fa-volume-up"></i> 朗读' : '<i class="fas fa-play"></i>';
+    }
+  },
 
   preloadUnitAudio(unitId, audioPaths = null) {
     const base = audioPaths || {};
@@ -403,107 +401,10 @@ const AudioController = {
       const audio = new Audio();
       audio.preload = 'metadata';
       audio.src = base.paragraphPattern ? base.paragraphPattern.replace('{id}', i.toString().padStart(2,'0')) : `/english-reading-multi/audio/${unitId}/paragraph_${i.toString().padStart(2,'0')}.mp3`;
-      audio.load(); // 显式加载
+      audio.load();
     }
   },
 
-  async toggleParagraphAudio(paraNum, unitId) {
-    const btnId = `${unitId}_para-audio-btn-${paraNum}`;
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    if (btn.classList.contains('playing')) {
-      this.stop();
-      return;
-    }
-    btn.classList.add('loading');
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';
-    try {
-      const audio = new Audio();
-      const unitData = UnitManager.getCurrentUnitData();
-      const pattern = unitData.audio?.paragraphPattern || `/english-reading-multi/audio/${unitId}/paragraph_{id}.mp3`;
-      audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
-      await audio.play();
-      this.stop();
-      this.currentAudio = audio;
-      btn.classList.remove('loading');
-      btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i> 停止';
-      this.currentPlayingButton = btn;
-      audio.onended = () => this.stop();
-    } catch (e) {
-      console.warn('本地音频失败，使用TTS', e);
-      const paraText = document.getElementById(`${unitId}_para${paraNum}-text`)?.innerText || '';
-      this.playTTS(paraText);
-      btn.classList.remove('loading');
-      btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i> 停止(TTS)';
-    }
-  },
-
-  async toggleImplicationAudio(paraNum, unitId) {
-    const btnId = `${unitId}_impl-audio-btn-${paraNum}`;
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    if (btn.classList.contains('playing')) { this.stop(); return; }
-    btn.classList.add('loading');
-    try {
-      const audio = new Audio();
-      const unitData = UnitManager.getCurrentUnitData();
-      const pattern = unitData.audio?.implicationPattern || `/english-reading-multi/audio/${unitId}/impl_{id}.mp3`;
-      audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
-      await audio.play();
-      this.stop();
-      this.currentAudio = audio;
-      btn.classList.remove('loading'); btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i>'; // 解读按钮只有图标
-      this.currentPlayingButton = btn;
-      audio.onended = () => this.stop();
-    } catch (e) {
-      const impl = UnitManager.getCurrentUnitData()?.article?.paragraphs[paraNum-1]?.implication?.english || '';
-      this.playTTS(impl);
-      btn.classList.remove('loading'); btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i>';
-    }
-  },
-
-  async playVocabularyWord(vocabId, unitId) {
-    const btnId = `${unitId}_vocab-audio-btn-${vocabId}`;
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    if (btn.classList.contains('playing')) { this.stop(); return; }
-    btn.classList.add('loading');
-    try {
-      const audio = new Audio();
-      const unitData = UnitManager.getCurrentUnitData();
-      const pattern = unitData.audio?.vocabularyPattern || `/english-reading-multi/audio/${unitId}/word_{id}.mp3`;
-      audio.src = pattern.replace('{id}', vocabId.toString().padStart(2,'0'));
-      await audio.play();
-      this.stop();
-      this.currentAudio = audio;
-      btn.classList.remove('loading'); btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i>'; // 词汇按钮只有图标
-      this.currentPlayingButton = btn;
-      audio.onended = () => this.stop();
-    } catch (e) {
-      const word = UnitManager.getCurrentUnitData()?.vocabulary?.find(v => v.id === vocabId)?.word || '';
-      this.playTTS(word);
-      btn.classList.remove('loading'); btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i>';
-    }
-  },
-
-  playTTS(text) {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = 'en-GB';
-    utter.rate = 0.85;
-    window.speechSynthesis.speak(utter);
-    this.currentAudio = utter;
-    utter.onend = () => this.stop();
-  },
-
-  // 缺陷3修复：根据按钮类型恢复原始图标/文字
   stop() {
     if (this.currentAudio) {
       if (this.currentAudio instanceof HTMLAudioElement) {
@@ -515,35 +416,170 @@ const AudioController = {
       this.currentAudio = null;
     }
     if (this.currentPlayingButton) {
-      const btn = this.currentPlayingButton;
-      btn.classList.remove('playing', 'loading');
-      
-      // 根据按钮ID前缀判断类型
-      if (btn.id.includes('_para-audio-btn-')) {
-        btn.innerHTML = '<i class="fas fa-volume-up"></i> 朗读';
-      } else if (btn.id.includes('_impl-audio-btn-')) {
-        btn.innerHTML = '<i class="fas fa-play"></i>';
-      } else if (btn.id.includes('_vocab-audio-btn-')) {
-        btn.innerHTML = '<i class="fas fa-volume-up"></i>';
-      } else {
-        // 降级通用恢复
-        btn.innerHTML = btn.innerHTML.includes('朗读') ? '<i class="fas fa-volume-up"></i> 朗读' : '<i class="fas fa-play"></i>';
-      }
+      this.resetButton(this.currentPlayingButton);
       this.currentPlayingButton = null;
     }
+  },
+
+  async toggleParagraphAudio(paraNum, unitId) {
+    const btn = document.getElementById(`${unitId}_para-audio-btn-${paraNum}`);
+    if (!btn) return;
+    if (btn.classList.contains('playing')) {
+      this.stop();
+      return;
+    }
+
+    btn.classList.add('loading');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';
+
+    try {
+      const audio = new Audio();
+      const unitData = UnitManager.getCurrentUnitData();
+      const pattern = unitData.audio?.paragraphPattern || `/english-reading-multi/audio/${unitId}/paragraph_{id}.mp3`;
+      audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
+      await audio.play();
+
+      this.stop(); // 停止当前播放
+      this.currentAudio = audio;
+      this.currentPlayingButton = btn;
+
+      btn.classList.remove('loading');
+      btn.classList.add('playing');
+      btn.innerHTML = '<i class="fas fa-stop"></i> 停止';
+
+      // 自然结束处理：只恢复这个按钮，不干扰全局状态
+      audio.onended = () => {
+        this.resetButton(btn);
+        if (this.currentAudio === audio) this.currentAudio = null;
+        if (this.currentPlayingButton === btn) this.currentPlayingButton = null;
+      };
+    } catch (e) {
+      console.warn('本地音频失败，使用TTS', e);
+      const paraText = document.getElementById(`${unitId}_para${paraNum}-text`)?.innerText || '';
+      this.playTTS(paraText, btn, 'para');
+    }
+  },
+
+  async toggleImplicationAudio(paraNum, unitId) {
+    const btn = document.getElementById(`${unitId}_impl-audio-btn-${paraNum}`);
+    if (!btn) return;
+    if (btn.classList.contains('playing')) {
+      this.stop();
+      return;
+    }
+
+    btn.classList.add('loading');
+    // 去除 💡 符号（仅用于音频）
+    const unitData = UnitManager.getCurrentUnitData();
+    const rawImpl = unitData?.article?.paragraphs[paraNum-1]?.implication?.english || '';
+    const cleanImpl = rawImpl.replace(/^💡\s*/, ''); // 移除开头的💡及空白
+
+    try {
+      const audio = new Audio();
+      const pattern = unitData.audio?.implicationPattern || `/english-reading-multi/audio/${unitId}/impl_{id}.mp3`;
+      audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
+      await audio.play();
+
+      this.stop();
+      this.currentAudio = audio;
+      this.currentPlayingButton = btn;
+
+      btn.classList.remove('loading');
+      btn.classList.add('playing');
+      btn.innerHTML = '<i class="fas fa-stop"></i>';
+
+      audio.onended = () => {
+        this.resetButton(btn);
+        if (this.currentAudio === audio) this.currentAudio = null;
+        if (this.currentPlayingButton === btn) this.currentPlayingButton = null;
+      };
+    } catch (e) {
+      console.warn('本地音频失败，使用TTS', e);
+      this.playTTS(cleanImpl, btn, 'impl');
+    }
+  },
+
+  async playVocabularyWord(vocabId, unitId) {
+    const btn = document.getElementById(`${unitId}_vocab-audio-btn-${vocabId}`);
+    if (!btn) return;
+    if (btn.classList.contains('playing')) {
+      this.stop();
+      return;
+    }
+
+    btn.classList.add('loading');
+    const unitData = UnitManager.getCurrentUnitData();
+    const word = unitData?.vocabulary?.find(v => v.id === vocabId)?.word || '';
+
+    try {
+      const audio = new Audio();
+      const pattern = unitData.audio?.vocabularyPattern || `/english-reading-multi/audio/${unitId}/word_{id}.mp3`;
+      audio.src = pattern.replace('{id}', vocabId.toString().padStart(2,'0'));
+      await audio.play();
+
+      this.stop();
+      this.currentAudio = audio;
+      this.currentPlayingButton = btn;
+
+      btn.classList.remove('loading');
+      btn.classList.add('playing');
+      btn.innerHTML = '<i class="fas fa-stop"></i>';
+
+      audio.onended = () => {
+        this.resetButton(btn);
+        if (this.currentAudio === audio) this.currentAudio = null;
+        if (this.currentPlayingButton === btn) this.currentPlayingButton = null;
+      };
+    } catch (e) {
+      console.warn('本地音频失败，使用TTS', e);
+      this.playTTS(word, btn, 'vocab');
+    }
+  },
+
+  // TTS 播放，支持按钮自然结束恢复
+  playTTS(text, btn = null, type = '') {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'en-GB';
+    utter.rate = 0.85;
+
+    // 如果传入了按钮，设置播放状态并处理自然结束
+    if (btn) {
+      this.stop();
+      btn.classList.remove('loading');
+      btn.classList.add('playing');
+      if (type === 'para') {
+        btn.innerHTML = '<i class="fas fa-stop"></i> 停止(TTS)';
+      } else {
+        btn.innerHTML = '<i class="fas fa-stop"></i>';
+      }
+      this.currentPlayingButton = btn;
+    }
+
+    utter.onend = () => {
+      if (btn) {
+        this.resetButton(btn);
+        if (this.currentPlayingButton === btn) this.currentPlayingButton = null;
+      }
+      this.currentAudio = null;
+    };
+
+    window.speechSynthesis.speak(utter);
+    this.currentAudio = utter;
   }
 };
 
 // ============================================
-// 拖拽管理器（修复缺陷1、2：全局监听 + closest 定位）
+// 拖拽管理器（全局统一监听）
 // ============================================
 const DragDrop = {
-  dragHistory: new Map(), // unitId -> array
+  dragHistory: new Map(),
   vocabDragHistory: new Map(),
 
   allowDrop(ev) { ev.preventDefault(); },
 
-  // 全局 dragstart 监听器（在文件末尾绑定）
   handleDragStart(ev) {
     const el = ev.target.closest('.drag-item, .vocab-drag-item');
     if (el && el.draggable) {
@@ -551,9 +587,7 @@ const DragDrop = {
     }
   },
 
-  // 全局 drop 监听器（在文件末尾绑定）
   handleDrop(ev) {
-    // 词汇拖拽
     const vocabDropzone = ev.target.closest('.vocab-dropzone');
     if (vocabDropzone) {
       ev.preventDefault();
@@ -564,7 +598,6 @@ const DragDrop = {
       return;
     }
     
-    // 句子完成拖拽
     const sevenFiveDropzone = ev.target.closest('.seven-five-dropzone');
     if (sevenFiveDropzone) {
       ev.preventDefault();
@@ -575,7 +608,6 @@ const DragDrop = {
     }
   },
 
-  // 句子完成放置（修复缺陷2：使用传入的dropzone）
   drop(ev, unitId, dropzone) {
     const data = ev.dataTransfer.getData('text/plain');
     const dragged = document.getElementById(data);
@@ -613,7 +645,6 @@ const DragDrop = {
     }
   },
 
-  // 词汇放置（修复缺陷2：使用传入的dropzone）
   dropVocab(ev, unitId, dropzone) {
     const data = ev.dataTransfer.getData('text/plain');
     const dragged = document.getElementById(data);
@@ -646,7 +677,7 @@ const DragDrop = {
       last.dropzone.innerHTML = '';
       last.dropzone.classList.remove('filled');
       last.dropzone.removeAttribute('data-answer');
-      last.dropzone.style.color = ''; // 清除可能的内联颜色
+      last.dropzone.style.color = '';
     }
   },
 
@@ -658,7 +689,7 @@ const DragDrop = {
 };
 
 // ============================================
-// 习题检查器（修复缺陷5：动态获取题目数量）
+// 习题检查器（动态长度修复）
 // ============================================
 const ExerciseChecker = {
   checkVocabUsage(unitId) {
@@ -670,7 +701,7 @@ const ExerciseChecker = {
       if (!dz) continue;
       const user = dz.getAttribute('data-answer') || '';
       dz.classList.remove('correct','incorrect');
-      dz.style.color = ''; // 清除内联颜色
+      dz.style.color = '';
       if (!user) {
         dz.innerHTML = answers[i-1];
         dz.style.color = '#7c3aed';
@@ -684,7 +715,6 @@ const ExerciseChecker = {
     this.showResult(unitId, 'vocab', correct, answers.length);
   },
 
-  // 缺陷5修复：根据 answers.vocab 长度动态重置
   resetVocabUsage(unitId) {
     const data = UnitManager.getCurrentUnitData();
     if (!data) return;
@@ -745,7 +775,6 @@ const ExerciseChecker = {
     this.genericCheckFill(unitId, 'cloze', unitData => unitData.answers.cloze);
   },
 
-  // 缺陷5修复：动态获取答案长度
   resetCloze(unitId) {
     const data = UnitManager.getCurrentUnitData();
     if (!data) return;
@@ -782,7 +811,7 @@ const ExerciseChecker = {
         DragDrop.adjustDropzoneWidth(dz);
       } else if (user === answers[i-1]) {
         dz.classList.add('correct'); 
-        dz.classList.add('filled'); // 添加 filled 类以维持边框样式
+        dz.classList.add('filled');
         correct++;
         DragDrop.adjustDropzoneWidth(dz);
       } else {
@@ -797,7 +826,6 @@ const ExerciseChecker = {
     this.showResult(unitId, 'sevenfive', correct, answers.length);
   },
 
-  // 缺陷5修复：动态获取答案长度
   resetSevenFive(unitId) {
     const data = UnitManager.getCurrentUnitData();
     if (!data) return;
@@ -877,7 +905,7 @@ const ExerciseChecker = {
 };
 
 // ============================================
-// 全局拖拽事件监听器（修复缺陷1、2：统一处理，避免重复）
+// 全局拖拽监听器
 // ============================================
 document.addEventListener('dragstart', (e) => {
   DragDrop.handleDragStart(e);
