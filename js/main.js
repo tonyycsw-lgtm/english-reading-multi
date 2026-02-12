@@ -90,35 +90,11 @@ const UnitManager = (function() {
     if (unitInfo) await loadAndRenderUnit(unitInfo);
   }
 
-  async function handleFileUpload(input) {
-    const file = input.files[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const unitData = JSON.parse(text);
-      if (!unitData.unitId || !unitData.unitName || !unitData.article) {
-        throw new Error('无效的单元JSON格式');
-      }
-      const tempId = 'upload_' + Date.now();
-      const tempEntry = {
-        unitId: tempId,
-        unitName: unitData.unitName,
-        dataUrl: URL.createObjectURL(file)
-      };
-      unitsIndex.push(tempEntry);
-      populateUnitSelect();
-      await loadAndRenderUnit(tempEntry);
-    } catch (e) {
-      alert('解析JSON失败：' + e.message);
-    } finally {
-      input.value = '';
-    }
-  }
+  // 上传功能已完全删除 - 无 handleFileUpload 函数
 
   return {
     init,
     handleUnitSelect,
-    handleFileUpload,
     getCurrentUnitId: () => currentUnitId,
     getCurrentUnitData: () => currentUnitData
   };
@@ -389,7 +365,6 @@ const AudioController = {
     } else if (btn.id.includes('_vocab-audio-btn-')) {
       btn.innerHTML = '<i class="fas fa-volume-up"></i>';
     } else {
-      // 降级通用恢复
       btn.innerHTML = btn.innerHTML.includes('朗读') ? '<i class="fas fa-volume-up"></i> 朗读' : '<i class="fas fa-play"></i>';
     }
   },
@@ -439,7 +414,7 @@ const AudioController = {
       audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
       await audio.play();
 
-      this.stop(); // 停止当前播放
+      this.stop();
       this.currentAudio = audio;
       this.currentPlayingButton = btn;
 
@@ -447,7 +422,6 @@ const AudioController = {
       btn.classList.add('playing');
       btn.innerHTML = '<i class="fas fa-stop"></i> 停止';
 
-      // 自然结束处理：只恢复这个按钮，不干扰全局状态
       audio.onended = () => {
         this.resetButton(btn);
         if (this.currentAudio === audio) this.currentAudio = null;
@@ -469,10 +443,9 @@ const AudioController = {
     }
 
     btn.classList.add('loading');
-    // 去除 💡 符号（仅用于音频）
     const unitData = UnitManager.getCurrentUnitData();
     const rawImpl = unitData?.article?.paragraphs[paraNum-1]?.implication?.english || '';
-    const cleanImpl = rawImpl.replace(/^💡\s*/, ''); // 移除开头的💡及空白
+    const cleanImpl = rawImpl.replace(/^💡\s*/, '');
 
     try {
       const audio = new Audio();
@@ -536,7 +509,6 @@ const AudioController = {
     }
   },
 
-  // TTS 播放，支持按钮自然结束恢复
   playTTS(text, btn = null, type = '') {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
@@ -545,7 +517,6 @@ const AudioController = {
     utter.lang = 'en-GB';
     utter.rate = 0.85;
 
-    // 如果传入了按钮，设置播放状态并处理自然结束
     if (btn) {
       this.stop();
       btn.classList.remove('loading');
