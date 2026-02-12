@@ -35,7 +35,6 @@ const UnitManager = (function() {
       unitsIndex = await res.json();
     } catch (e) {
       console.warn('加载单元索引失败，使用内置测试数据', e);
-      // 降级方案：内嵌测试数据（便于纯静态演示）
       unitsIndex = [
         { unitId: 'unit1', unitName: 'Unit 1 – A Severe Fire in Hong Kong', dataUrl: './data/unit1.json' },
         { unitId: 'unit2', unitName: 'Unit 2 – The Rise of Blindbox', dataUrl: './data/unit2.json' }
@@ -61,10 +60,16 @@ const UnitManager = (function() {
     return params.get('unit');
   }
 
-  // 加载单元数据并渲染
+  // 加载单元数据并渲染（修复缺陷6：切换前停止音频、清除历史）
   async function loadAndRenderUnit(unitInfo) {
     try {
-      // 显示加载中
+      // ---------- 缺陷6修复：停止所有音频，清除拖拽历史 ----------
+      AudioController.stop();
+      if (currentUnitId) {
+        DragDrop.dragHistory.delete(currentUnitId);
+        DragDrop.vocabDragHistory.delete(currentUnitId);
+      }
+
       Renderer.showLoading();
       const res = await fetch(unitInfo.dataUrl);
       if (!res.ok) throw new Error('加载单元数据失败');
@@ -73,18 +78,14 @@ const UnitManager = (function() {
       currentUnitId = unitData.unitId || unitInfo.unitId;
       app.dataset.unitId = currentUnitId;
 
-      // 更新下拉框选中项
       const select = document.getElementById('unit-select');
       select.value = currentUnitId;
 
-      // 更新URL（不刷新页面）
       const url = new URL(window.location);
       url.searchParams.set('unit', currentUnitId);
       window.history.pushState({}, '', url);
 
-      // 渲染所有部分
       Renderer.renderAll(unitData, currentUnitId);
-      // 预加载当前单元音频（仅metadata）
       AudioController.preloadUnitAudio(currentUnitId, unitData.audio);
     } catch (e) {
       console.error(e);
@@ -92,29 +93,25 @@ const UnitManager = (function() {
     }
   }
 
-  // 切换单元（由下拉框触发）
   async function handleUnitSelect(unitId) {
     const unitInfo = unitsIndex.find(u => u.unitId === unitId);
     if (unitInfo) await loadAndRenderUnit(unitInfo);
   }
 
-  // 处理文件上传
   async function handleFileUpload(input) {
     const file = input.files[0];
     if (!file) return;
     try {
       const text = await file.text();
       const unitData = JSON.parse(text);
-      // 基本校验
       if (!unitData.unitId || !unitData.unitName || !unitData.article) {
         throw new Error('无效的单元JSON格式');
       }
-      // 添加到临时索引（dataUrl为特殊标记）
       const tempId = 'upload_' + Date.now();
       const tempEntry = {
         unitId: tempId,
         unitName: unitData.unitName,
-        dataUrl: URL.createObjectURL(file)  // 临时blob url
+        dataUrl: URL.createObjectURL(file)
       };
       unitsIndex.push(tempEntry);
       populateUnitSelect();
@@ -122,11 +119,10 @@ const UnitManager = (function() {
     } catch (e) {
       alert('解析JSON失败：' + e.message);
     } finally {
-      input.value = ''; // 清空input
+      input.value = '';
     }
   }
 
-  // 公共API
   return {
     init,
     handleUnitSelect,
@@ -137,7 +133,7 @@ const UnitManager = (function() {
 })();
 
 // ============================================
-// 渲染器 – 将所有单元数据绘制到对应容器
+// 渲染器
 // ============================================
 const Renderer = {
   showLoading() {
@@ -158,7 +154,6 @@ const Renderer = {
     this.renderCloze(unitData, unitId);
     this.renderSevenFive(unitData, unitId);
     this.renderGrammar(unitData, unitId);
-    // 重新绑定输入框自适应
     setTimeout(() => {
       this.attachInputListeners(unitId);
     }, 50);
@@ -211,7 +206,6 @@ const Renderer = {
     });
     html += `</div></div>`;
 
-    // 词汇区
     html += `<div class="vocab-section"><h4 class="vocab-title"><i class="fas fa-bookmark"></i> 核心词汇</h4><div class="vocab-list" id="${unitId}_vocab-list">`;
     vocab.forEach((v, i) => {
       html += `
@@ -234,6 +228,7 @@ const Renderer = {
   },
 
   // ---------- Vocabulary Usage (拖拽) ----------
+  // 缺陷1修复：移除所有内联拖拽监听器，完全依靠全局监听器
   renderVocabUsage(unitData, unitId) {
     const container = document.getElementById('vocab-usage-section');
     const vu = unitData.vocabUsage;
@@ -245,7 +240,8 @@ const Renderer = {
         <div class="vocab-drag-source" id="${unitId}_vocab-drag-source">
     `;
     vu.options.forEach(opt => {
-      html += `<div class="vocab-drag-item" draggable="true" ondragstart="DragDrop.dragVocab(event, '${unitId}')" id="${unitId}_vocab-option-${opt}">
+      // 缺陷1修复：移除 ondragstart，完全由全局监听器处理（已在document上监听dragstart）
+      html += `<div class="vocab-drag-item" draggable="true" id="${unitId}_vocab-option-${opt}">
                   <i class="fas fa-grip-vertical" style="margin-right:8px; color:#9ca3af;"></i>${opt}
                 </div>`;
     });
@@ -253,7 +249,6 @@ const Renderer = {
 
     html += `<div style="font-size:12px; line-height:1.6; padding:12px; background:#fafafa; border-radius:6px;" id="${unitId}_vocab-usage-text">`;
     vu.questions.forEach((q, idx) => {
-      // 替换dropzone id为带前缀
       const qWithId = q.replace(/id='vocab-drop-(\d+)'/, `id='${unitId}_vocab-drop-$1'`);
       html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                 <span style="min-width:20px; font-weight:bold;">${idx+1}.</span>
@@ -283,9 +278,10 @@ const Renderer = {
       html += `<div><div style="font-weight:600;">${item.question}</div><div style="margin-left:20px;">`;
       item.options.forEach(opt => {
         const radioId = `${unitId}_reading-${qNum}-${opt.id}`;
+        // 缺陷4修复：为label添加class="option-label"
         html += `<div style="display:flex; align-items:center; gap:8px;">
                     <input type="radio" name="${unitId}_reading-${qNum}" id="${radioId}" value="${opt.id}">
-                    <label for="${radioId}">${opt.text}</label>
+                    <label for="${radioId}" class="option-label">${opt.text}</label>
                   </div>`;
       });
       html += `</div></div>`;
@@ -303,7 +299,6 @@ const Renderer = {
   renderCloze(unitData, unitId) {
     const container = document.getElementById('cloze-section');
     let text = unitData.clozeText || '';
-    // 替换输入框id
     text = text.replace(/id='cloze-(\d+)'/g, `id='${unitId}_cloze-$1'`);
     container.innerHTML = `
       <div style="font-size:12px; line-height:1.6; padding:12px; border:1px solid #eee; border-radius:6px;">${text}</div>
@@ -315,14 +310,15 @@ const Renderer = {
     `;
   },
 
-  // ---------- 句子完成 (7选5/7) ----------
+  // ---------- 句子完成 ----------
   renderSevenFive(unitData, unitId) {
     const container = document.getElementById('seven-five-section');
     const sf = unitData.sevenFive;
     if (!sf) { container.innerHTML = ''; return; }
     let optionsHtml = '';
     sf.options.forEach(opt => {
-      optionsHtml += `<div class="drag-item" draggable="true" ondragstart="DragDrop.drag(event, '${unitId}')" id="${unitId}_option-${opt.id}">
+      // 缺陷1修复：移除 ondragstart，由全局监听器处理
+      optionsHtml += `<div class="drag-item" draggable="true" id="${unitId}_option-${opt.id}">
                         <i class="fas fa-grip-vertical" style="margin-right:8px;"></i>${opt.text}
                       </div>`;
     });
@@ -358,7 +354,6 @@ const Renderer = {
     `;
   },
 
-  // 工具函数：切换翻译/解读显示
   toggleTranslation(id) {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('show');
@@ -368,7 +363,6 @@ const Renderer = {
     if (el) el.classList.toggle('show');
   },
 
-  // 绑定输入框自适应监听器
   attachInputListeners(unitId) {
     document.querySelectorAll(`.cloze-input[id^="${unitId}_"], .grammar-input[id^="${unitId}_"]`).forEach(input => {
       input.removeEventListener('input', this.adjustWidth);
@@ -396,13 +390,12 @@ const Renderer = {
 };
 
 // ============================================
-// 音频控制器（支持本地MP3优先，TTS降级）
+// 音频控制器（修复缺陷3：停止时按按钮类型恢复）
 // ============================================
 const AudioController = {
   currentAudio: null,
   currentPlayingButton: null,
 
-  // 预加载当前单元的音频（只读metadata）
   preloadUnitAudio(unitId, audioPaths = null) {
     const base = audioPaths || {};
     const paraCount = UnitManager.getCurrentUnitData()?.article?.paragraphs?.length || 6;
@@ -410,7 +403,7 @@ const AudioController = {
       const audio = new Audio();
       audio.preload = 'metadata';
       audio.src = base.paragraphPattern ? base.paragraphPattern.replace('{id}', i.toString().padStart(2,'0')) : `/english-reading-multi/audio/${unitId}/paragraph_${i.toString().padStart(2,'0')}.mp3`;
-      audio.load();
+      audio.load(); // 显式加载
     }
   },
 
@@ -430,7 +423,7 @@ const AudioController = {
       const pattern = unitData.audio?.paragraphPattern || `/english-reading-multi/audio/${unitId}/paragraph_{id}.mp3`;
       audio.src = pattern.replace('{id}', paraNum.toString().padStart(2,'0'));
       await audio.play();
-      this.stop(); // 停止之前的
+      this.stop();
       this.currentAudio = audio;
       btn.classList.remove('loading');
       btn.classList.add('playing');
@@ -438,7 +431,6 @@ const AudioController = {
       this.currentPlayingButton = btn;
       audio.onended = () => this.stop();
     } catch (e) {
-      // 降级到TTS
       console.warn('本地音频失败，使用TTS', e);
       const paraText = document.getElementById(`${unitId}_para${paraNum}-text`)?.innerText || '';
       this.playTTS(paraText);
@@ -463,7 +455,8 @@ const AudioController = {
       this.stop();
       this.currentAudio = audio;
       btn.classList.remove('loading'); btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i>';
+      btn.innerHTML = '<i class="fas fa-stop"></i>'; // 解读按钮只有图标
+      this.currentPlayingButton = btn;
       audio.onended = () => this.stop();
     } catch (e) {
       const impl = UnitManager.getCurrentUnitData()?.article?.paragraphs[paraNum-1]?.implication?.english || '';
@@ -488,7 +481,8 @@ const AudioController = {
       this.stop();
       this.currentAudio = audio;
       btn.classList.remove('loading'); btn.classList.add('playing');
-      btn.innerHTML = '<i class="fas fa-stop"></i>';
+      btn.innerHTML = '<i class="fas fa-stop"></i>'; // 词汇按钮只有图标
+      this.currentPlayingButton = btn;
       audio.onended = () => this.stop();
     } catch (e) {
       const word = UnitManager.getCurrentUnitData()?.vocabulary?.find(v => v.id === vocabId)?.word || '';
@@ -509,6 +503,7 @@ const AudioController = {
     utter.onend = () => this.stop();
   },
 
+  // 缺陷3修复：根据按钮类型恢复原始图标/文字
   stop() {
     if (this.currentAudio) {
       if (this.currentAudio instanceof HTMLAudioElement) {
@@ -520,17 +515,27 @@ const AudioController = {
       this.currentAudio = null;
     }
     if (this.currentPlayingButton) {
-      this.currentPlayingButton.classList.remove('playing', 'loading');
-      const icon = this.currentPlayingButton.querySelector('i');
-      if (icon) icon.className = 'fas fa-volume-up';
-      this.currentPlayingButton.innerHTML = '<i class="fas fa-volume-up"></i> 朗读';
+      const btn = this.currentPlayingButton;
+      btn.classList.remove('playing', 'loading');
+      
+      // 根据按钮ID前缀判断类型
+      if (btn.id.includes('_para-audio-btn-')) {
+        btn.innerHTML = '<i class="fas fa-volume-up"></i> 朗读';
+      } else if (btn.id.includes('_impl-audio-btn-')) {
+        btn.innerHTML = '<i class="fas fa-play"></i>';
+      } else if (btn.id.includes('_vocab-audio-btn-')) {
+        btn.innerHTML = '<i class="fas fa-volume-up"></i>';
+      } else {
+        // 降级通用恢复
+        btn.innerHTML = btn.innerHTML.includes('朗读') ? '<i class="fas fa-volume-up"></i> 朗读' : '<i class="fas fa-play"></i>';
+      }
       this.currentPlayingButton = null;
     }
   }
 };
 
 // ============================================
-// 拖拽管理器
+// 拖拽管理器（修复缺陷1、2：全局监听 + closest 定位）
 // ============================================
 const DragDrop = {
   dragHistory: new Map(), // unitId -> array
@@ -538,28 +543,56 @@ const DragDrop = {
 
   allowDrop(ev) { ev.preventDefault(); },
 
-  drag(ev, unitId) {
-    ev.dataTransfer.setData('text/plain', ev.target.id);
+  // 全局 dragstart 监听器（在文件末尾绑定）
+  handleDragStart(ev) {
+    const el = ev.target.closest('.drag-item, .vocab-drag-item');
+    if (el && el.draggable) {
+      ev.dataTransfer.setData('text/plain', el.id);
+    }
   },
 
-  drop(ev, unitId) {
-    ev.preventDefault();
+  // 全局 drop 监听器（在文件末尾绑定）
+  handleDrop(ev) {
+    // 词汇拖拽
+    const vocabDropzone = ev.target.closest('.vocab-dropzone');
+    if (vocabDropzone) {
+      ev.preventDefault();
+      const unitId = UnitManager.getCurrentUnitId();
+      if (unitId) {
+        this.dropVocab(ev, unitId, vocabDropzone);
+      }
+      return;
+    }
+    
+    // 句子完成拖拽
+    const sevenFiveDropzone = ev.target.closest('.seven-five-dropzone');
+    if (sevenFiveDropzone) {
+      ev.preventDefault();
+      const unitId = UnitManager.getCurrentUnitId();
+      if (unitId) {
+        this.drop(ev, unitId, sevenFiveDropzone);
+      }
+    }
+  },
+
+  // 句子完成放置（修复缺陷2：使用传入的dropzone）
+  drop(ev, unitId, dropzone) {
     const data = ev.dataTransfer.getData('text/plain');
     const dragged = document.getElementById(data);
     if (!dragged || dragged.classList.contains('used')) return;
-    if (!ev.target.classList.contains('seven-five-dropzone')) return;
+    if (!dropzone) return;
 
     if (!this.dragHistory.has(unitId)) this.dragHistory.set(unitId, []);
     this.dragHistory.get(unitId).push({
-      dropzone: ev.target,
+      dropzone: dropzone,
       optionId: data,
       draggedElement: dragged
     });
 
-    ev.target.innerHTML = dragged.textContent.replace(/^.*?>\s*/, ''); // 去掉图标
-    ev.target.classList.add('filled');
-    ev.target.setAttribute('data-answer', data.split('-').pop());
-    this.adjustDropzoneWidth(ev.target);
+    dropzone.innerHTML = dragged.textContent.replace(/^.*?>\s*/, '');
+    dropzone.classList.add('filled');
+    dropzone.setAttribute('data-answer', data.split('-').pop());
+    this.adjustDropzoneWidth(dropzone);
     dragged.classList.add('used');
     dragged.draggable = false;
   },
@@ -580,28 +613,24 @@ const DragDrop = {
     }
   },
 
-  dragVocab(ev, unitId) {
-    ev.dataTransfer.setData('text/plain', ev.target.id);
-  },
-
-  dropVocab(ev, unitId) {
-    ev.preventDefault();
+  // 词汇放置（修复缺陷2：使用传入的dropzone）
+  dropVocab(ev, unitId, dropzone) {
     const data = ev.dataTransfer.getData('text/plain');
     const dragged = document.getElementById(data);
     if (!dragged || dragged.classList.contains('used')) return;
-    if (!ev.target.classList.contains('vocab-dropzone')) return;
+    if (!dropzone) return;
 
     if (!this.vocabDragHistory.has(unitId)) this.vocabDragHistory.set(unitId, []);
     this.vocabDragHistory.get(unitId).push({
-      dropzone: ev.target,
+      dropzone: dropzone,
       optionId: data,
       draggedElement: dragged
     });
 
     const word = data.replace(`${unitId}_vocab-option-`, '');
-    ev.target.innerHTML = word;
-    ev.target.classList.add('filled');
-    ev.target.setAttribute('data-answer', word);
+    dropzone.innerHTML = word;
+    dropzone.classList.add('filled');
+    dropzone.setAttribute('data-answer', word);
     dragged.classList.add('used');
     dragged.draggable = false;
   },
@@ -617,6 +646,7 @@ const DragDrop = {
       last.dropzone.innerHTML = '';
       last.dropzone.classList.remove('filled');
       last.dropzone.removeAttribute('data-answer');
+      last.dropzone.style.color = ''; // 清除可能的内联颜色
     }
   },
 
@@ -628,7 +658,7 @@ const DragDrop = {
 };
 
 // ============================================
-// 习题检查器
+// 习题检查器（修复缺陷5：动态获取题目数量）
 // ============================================
 const ExerciseChecker = {
   checkVocabUsage(unitId) {
@@ -640,10 +670,11 @@ const ExerciseChecker = {
       if (!dz) continue;
       const user = dz.getAttribute('data-answer') || '';
       dz.classList.remove('correct','incorrect');
+      dz.style.color = ''; // 清除内联颜色
       if (!user) {
         dz.innerHTML = answers[i-1];
         dz.style.color = '#7c3aed';
-      } else if (user.toLowerCase() === answers[i-1].toLowerCase()) {
+      } else if (user.trim().toLowerCase() === answers[i-1].trim().toLowerCase()) {
         dz.classList.add('correct'); correct++;
       } else {
         dz.classList.add('incorrect');
@@ -653,8 +684,12 @@ const ExerciseChecker = {
     this.showResult(unitId, 'vocab', correct, answers.length);
   },
 
+  // 缺陷5修复：根据 answers.vocab 长度动态重置
   resetVocabUsage(unitId) {
-    for (let i = 1; i <= 10; i++) {
+    const data = UnitManager.getCurrentUnitData();
+    if (!data) return;
+    const count = data.answers.vocab.length;
+    for (let i = 1; i <= count; i++) {
       const dz = document.getElementById(`${unitId}_vocab-drop-${i}`);
       if (dz) {
         dz.innerHTML = ''; 
@@ -710,8 +745,12 @@ const ExerciseChecker = {
     this.genericCheckFill(unitId, 'cloze', unitData => unitData.answers.cloze);
   },
 
+  // 缺陷5修复：动态获取答案长度
   resetCloze(unitId) {
-    this.genericResetFill(unitId, 'cloze', 10, 1.8);
+    const data = UnitManager.getCurrentUnitData();
+    if (!data) return;
+    const count = data.answers.cloze.length;
+    this.genericResetFill(unitId, 'cloze', count, 1.8);
   },
 
   checkGrammar(unitId) {
@@ -719,7 +758,10 @@ const ExerciseChecker = {
   },
 
   resetGrammar(unitId) {
-    this.genericResetFill(unitId, 'grammar', 10, 1.5);
+    const data = UnitManager.getCurrentUnitData();
+    if (!data) return;
+    const count = data.answers.grammar.length;
+    this.genericResetFill(unitId, 'grammar', count, 1.5);
   },
 
   checkSevenFive(unitId) {
@@ -731,16 +773,21 @@ const ExerciseChecker = {
       if (!dz) continue;
       const user = dz.getAttribute('data-answer');
       dz.classList.remove('correct','incorrect','empty');
+      dz.style.color = '';
       if (!user) {
         dz.classList.add('empty');
         const opt = data.sevenFive.options.find(o => o.id === answers[i-1]);
         dz.innerHTML = opt ? opt.text : answers[i-1];
+        dz.style.color = '#7c3aed';
         DragDrop.adjustDropzoneWidth(dz);
       } else if (user === answers[i-1]) {
-        dz.classList.add('correct'); correct++;
+        dz.classList.add('correct'); 
+        dz.classList.add('filled'); // 添加 filled 类以维持边框样式
+        correct++;
         DragDrop.adjustDropzoneWidth(dz);
       } else {
         dz.classList.add('incorrect');
+        dz.classList.add('filled');
         const userOpt = data.sevenFive.options.find(o => o.id === user);
         const corrOpt = data.sevenFive.options.find(o => o.id === answers[i-1]);
         dz.innerHTML = `${userOpt?.text || user} <br><small style="color:#b91c1c;">正确: ${corrOpt?.text || answers[i-1]}</small>`;
@@ -750,13 +797,18 @@ const ExerciseChecker = {
     this.showResult(unitId, 'sevenfive', correct, answers.length);
   },
 
+  // 缺陷5修复：动态获取答案长度
   resetSevenFive(unitId) {
-    for (let i = 1; i <= 7; i++) {
+    const data = UnitManager.getCurrentUnitData();
+    if (!data) return;
+    const count = data.answers.sevenFive.length;
+    for (let i = 1; i <= count; i++) {
       const dz = document.getElementById(`${unitId}_drop-${i}`);
       if (dz) {
         dz.innerHTML = ''; 
         dz.classList.remove('filled','correct','incorrect','empty'); 
         dz.removeAttribute('data-answer');
+        dz.style.color = '';
         dz.style.minWidth = '80px'; 
         dz.style.width = '80px';
       }
@@ -825,33 +877,18 @@ const ExerciseChecker = {
 };
 
 // ============================================
-// 全局拖拽事件监听器（修复拖拽放置问题）
+// 全局拖拽事件监听器（修复缺陷1、2：统一处理，避免重复）
 // ============================================
+document.addEventListener('dragstart', (e) => {
+  DragDrop.handleDragStart(e);
+});
+
 document.addEventListener('dragover', (e) => {
   e.preventDefault();
 });
 
 document.addEventListener('drop', (e) => {
-  // 词汇拖拽放置
-  const vocabDropzone = e.target.closest('.vocab-dropzone');
-  if (vocabDropzone) {
-    e.preventDefault();
-    const unitId = UnitManager.getCurrentUnitId();
-    if (unitId) {
-      DragDrop.dropVocab(e, unitId);
-    }
-    return;
-  }
-  
-  // 句子完成拖拽放置
-  const sevenFiveDropzone = e.target.closest('.seven-five-dropzone');
-  if (sevenFiveDropzone) {
-    e.preventDefault();
-    const unitId = UnitManager.getCurrentUnitId();
-    if (unitId) {
-      DragDrop.drop(e, unitId);
-    }
-  }
+  DragDrop.handleDrop(e);
 });
 
 // ============================================
