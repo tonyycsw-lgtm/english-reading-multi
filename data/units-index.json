@@ -8,5 +8,10 @@
     "unitId": "unit2",
     "unitName": "Unit 2 – The Rise of Blindbox",
     "dataUrl": "./data/unit2.json"
+  },
+  {
+    "unitId": "unit3",
+    "unitName": "Unit 3 – Teen friendships: navigating conflict and building resilience",
+    "dataUrl": "./data/unit3.json"
   }
 ]
